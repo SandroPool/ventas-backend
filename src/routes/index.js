@@ -7,3 +7,5 @@ module.exports.categoryRoutes = require("./categories");
 module.exports.suppliersRoutes = require("./suppliers");
 module.exports.receptionsRoutes = require("./receptions");
 module.exports.dashboardRoutes = require("./dashboard");
+module.exports.returnsRoutes = require("./returns");
+module.exports.installmentsRoutes = require("./installments");

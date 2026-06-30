@@ -1,20 +1,23 @@
 const express = require("express");
 const router = express.Router();
-const { salesController } = require("../controllers");
+const { returnsController } = require("../controllers");
 const { authMiddleware, roleMiddleware } = require("../middlewares/auth");
 const { ROOT, ADMIN, EMPLOYEE } = require('../configs/constants');
-const { createSale } = require("../validations/sales");
+const { createReturn } = require("../validations/returns");
 const { validate } = require("../middlewares/validate");
 
 router.get("/", authMiddleware,
     roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
-    salesController.getAll);
+    returnsController.getAll);
 router.post("/", authMiddleware,
     roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
-    createSale, validate,
-    salesController.create);
-router.put("/:id", authMiddleware,
+    createReturn, validate,
+    returnsController.create);
+router.get("/:id", authMiddleware,
     roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
-    salesController.update);
+    returnsController.getById);
+router.get("/sale/:id_sale", authMiddleware,
+    roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
+    returnsController.getBySale);
 
 module.exports = router;

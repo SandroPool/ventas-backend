@@ -20,13 +20,15 @@
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "express-validator": "^7.3.2",
     "jsonwebtoken": "^9.0.2",
-    "prisma": "^6.4.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "dotenv": "^16.4.7",
     "morgan": "^1.10.0",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "prisma": "^6.4.1"
   }
 }

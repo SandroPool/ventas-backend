@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const dashboardController = require("../controllers/dashboardController");
+const { dashboardController } = require("../controllers");
 const { authMiddleware, roleMiddleware } = require("../middlewares/auth");
 const { ROOT, ADMIN, EMPLOYEE } = require('../configs/constants');
 
@@ -21,5 +21,18 @@ router.get("/top-users", authMiddleware,
 router.get("/top-customers", authMiddleware,
     roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
     dashboardController.getTopCustomers);
+
+router.get("/sales-trend", authMiddleware,
+    roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
+    dashboardController.getSalesTrend);
+router.get("/low-stock", authMiddleware,
+    roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
+    dashboardController.getLowStock);
+router.get("/sales-by-category", authMiddleware,
+    roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
+    dashboardController.getSalesByCategory);
+router.get("/returns-rate", authMiddleware,
+    roleMiddleware([ROOT, ADMIN, EMPLOYEE]),
+    dashboardController.getReturnsRate);
 
 module.exports = router;

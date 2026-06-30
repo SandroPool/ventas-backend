@@ -29,6 +29,7 @@ model Products {
   ProductReceptions ProductReceptions[]
   SaleDetails       SaleDetails[]
   StockMovements    StockMovements[]
+  returnDetails     ReturnDetails[]
 
   @@index([name])
 }
@@ -89,19 +90,22 @@ model Customers {
 }
 
 model Sales {
-  id_sale          Int      @id @default(autoincrement())
-  date             DateTime @default(now())
+  id_sale          Int           @id @default(autoincrement())
+  date             DateTime      @default(now())
   payment_method   String
-  operation_number String   @unique
+  operation_number String        @unique
   total            Float
+  status           String        @default("COMPLETED") // COMPLETED, PARTIALLY_RETURNED, FULLY_RETURNED
   id_user          Int
   id_customer      Int
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  user     Users         @relation(fields: [id_user], references: [id_user])
-  customer Customers     @relation(fields: [id_customer], references: [id_customer])
-  details  SaleDetails[]
+  user         Users          @relation(fields: [id_user], references: [id_user])
+  customer     Customers      @relation(fields: [id_customer], references: [id_customer])
+  details      SaleDetails[]
+  returns      Returns[]
+  installments Installments[]
 
   @@index([date])
   @@index([id_user])
@@ -134,6 +138,50 @@ model StockMovements {
   @@index([id_product])
 }
 
+model Returns {
+  id_return    Int             @id @default(autoincrement())
+  id_sale      Int
+  date         DateTime        @default(now())
+  reason       String
+  total_amount Float
+  id_user      Int
+  createdAt    DateTime        @default(now())
+
+  sale    Sales           @relation(fields: [id_sale], references: [id_sale])
+  user    Users           @relation(fields: [id_user], references: [id_user])
+  details ReturnDetails[]
+
+  @@index([id_sale])
+}
+
+model ReturnDetails {
+  id_return_detail Int      @id @default(autoincrement())
+  id_return        Int
+  id_product       Int
+  quantity         Float
+  unit_price       Float
+  createdAt        DateTime @default(now())
+
+  return  Returns  @relation(fields: [id_return], references: [id_return])
+  product Products @relation(fields: [id_product], references: [id_product])
+
+  @@index([id_return])
+}
+
+model Installments {
+  id_installment Int       @id @default(autoincrement())
+  id_sale        Int
+  amount         Float
+  due_date       DateTime
+  paid           Boolean   @default(false)
+  paid_date      DateTime?
+  createdAt      DateTime  @default(now())
+
+  sale Sales @relation(fields: [id_sale], references: [id_sale])
+
+  @@index([id_sale])
+}
+
 enum Role {
   ROOT
   ADMIN
@@ -154,6 +202,7 @@ model Users {
 
   Sales             Sales[]
   ProductReceptions ProductReceptions[]
+  returns           Returns[]
 
   @@index([name])
 }

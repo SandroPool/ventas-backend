@@ -1,12 +1,14 @@
 const express = require("express");
 const router = express.Router();
-const usersController = require("../controllers/usersController");
+const { usersController } = require("../controllers");
 const { authMiddleware, roleMiddleware } = require("../middlewares/auth");
 const { ROOT, ADMIN, EMPLOYEE } = require('../configs/constants');
+const { register, login } = require("../validations/users");
+const { validate } = require("../middlewares/validate");
 
-router.post("/register", usersController.register);
+router.post("/register", register, validate, usersController.register);
 
-router.post("/login", usersController.login);
+router.post("/login", login, validate, usersController.login);
 router.post("/refresh-token", usersController.refreshToken);
 router.post("/logout", authMiddleware, usersController.logout);
 

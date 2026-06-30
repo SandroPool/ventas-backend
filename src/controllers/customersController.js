@@ -1,135 +1,91 @@
 const prisma = require("../configs/prisma");
+const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, logger } = require("../utils");
 
-// Obtener todos los clientes con paginación y búsqueda
-exports.getAll = async (req, res) => {
-    try {
-        const { page = 1, limit = 10, searchTerm = "" } = req.query;
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+exports.getAll = asyncHandler(async (req, res) => {
+    const { searchTerm = "" } = req.query;
+    const { page, limit, skip } = parsePagination(req.query);
 
-        let customers = [];
-        let totalCustomers = 0;
+    let customers = [];
+    let totalCustomers = 0;
 
-        if (searchTerm) {
-            // Normalización del término de búsqueda para insensibilidad a acentos
-            const normalizedSearchTerm = searchTerm.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (searchTerm) {
+        const normalizedSearchTerm = normalizeSearchTerm(searchTerm);
 
-            // Consulta SQL cruda para búsqueda insensible a acentos
-            const query = `
-                SELECT * FROM "Customers"
-                WHERE 
-                    LOWER(name) ILIKE LOWER($1) OR
-                    LOWER(first_surname) ILIKE LOWER($1) OR
-                    LOWER(second_surname) ILIKE LOWER($1) OR
-                    LOWER(dni) ILIKE LOWER($1)
-                ORDER BY "createdAt" DESC
-                LIMIT $2 OFFSET $3
-            `;
+        const query = `
+            SELECT * FROM "Customers"
+            WHERE 
+                LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(first_surname, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(second_surname, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(dni, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+            ORDER BY "createdAt" DESC
+            LIMIT $2 OFFSET $3
+        `;
 
-            // Ejecutar la consulta SQL cruda
-            customers = await prisma.$queryRawUnsafe(
-                query,
-                `%${normalizedSearchTerm}%`,
-                parseInt(limit),
-                parseInt(skip)
-            );
+        customers = await prisma.$queryRawUnsafe(
+            query,
+            `%${normalizedSearchTerm}%`,
+            limit,
+            skip
+        );
 
-            // Contar total de clientes que coinciden con el término de búsqueda
-            const countQuery = `
-                SELECT COUNT(*) as total FROM "Customers"
-                WHERE 
-                    LOWER(name) ILIKE LOWER($1) OR
-                    LOWER(first_surname) ILIKE LOWER($1) OR
-                    LOWER(second_surname) ILIKE LOWER($1) OR
-                    LOWER(dni) ILIKE LOWER($1)
-            `;
-            const totalResult = await prisma.$queryRawUnsafe(countQuery, `%${normalizedSearchTerm}%`);
-            totalCustomers = parseInt(totalResult[0].total);
-        } else {
-            // Si no hay término de búsqueda, usar métodos integrados de Prisma
-            totalCustomers = await prisma.customers.count();
-            customers = await prisma.customers.findMany({
-                skip: parseInt(skip),
-                take: parseInt(limit),
-                orderBy: { createdAt: "desc" },
-            });
-        }
-
-        res.json({
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total: totalCustomers,
-            totalPages: Math.ceil(totalCustomers / limit),
-            data: customers,
+        const countQuery = `
+            SELECT COUNT(*) as total FROM "Customers"
+            WHERE 
+                LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(first_surname, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(second_surname, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(dni, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+        `;
+        const totalResult = await prisma.$queryRawUnsafe(countQuery, `%${normalizedSearchTerm}%`);
+        totalCustomers = parseInt(totalResult[0].total);
+    } else {
+        totalCustomers = await prisma.customers.count();
+        customers = await prisma.customers.findMany({
+            skip,
+            take: limit,
+            orderBy: { createdAt: "desc" },
         });
-    } catch (error) {
-        console.error("Error en getAll:", error);
-        res.status(500).json({ error: "Error al obtener clientes" });
     }
-};
 
-// Crear un cliente
-exports.create = async (req, res) => {
-    try {
-        const { name, first_surname, second_surname, dni } = req.body;
+    res.json(paginatedResponse(customers, totalCustomers, page, limit));
+});
 
-        // Validación de campos obligatorios
-        if (!name || !first_surname || !second_surname) {
-            return res.status(400).json({ error: "Nombre y apellido son obligatorios" });
-        }
+exports.create = asyncHandler(async (req, res) => {
+    const { name, first_surname, second_surname, dni } = req.body;
 
-        // Validación de DNI
-        if (!dni || !/^\d{8}$/.test(dni)) {
-            return res.status(400).json({ error: "El DNI debe tener exactamente 8 dígitos" });
-        }
-
-        const existingCustomer = await prisma.customers.findUnique({ where: { dni } });
-        if (existingCustomer) {
-            return res.status(400).json({ error: "El DNI ya está registrado" });
-        }
-
-
-        const newCustomer = await prisma.customers.create({
-            data: { name, first_surname, second_surname, dni }
-        });
-
-        res.status(201).json(newCustomer);
-    } catch (error) {
-        console.error("Error en create:", error);
-        res.status(400).json({ error: "Error al crear cliente" });
+    const existingCustomer = await prisma.customers.findUnique({ where: { dni } });
+    if (existingCustomer) {
+        return res.status(400).json({ error: "El DNI ya está registrado" });
     }
-};
 
-// Actualizar un cliente
-exports.update = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, first_surname, second_surname, dni } = req.body;
+    const newCustomer = await prisma.customers.create({
+        data: { name, first_surname, second_surname, dni }
+    });
 
-        if (!name && !first_surname && !second_surname && !dni) {
-            return res.status(400).json({ error: "Debe proporcionar al menos un campo para actualizar" });
-        }
+    res.status(201).json(newCustomer);
+});
 
-        const customer = await prisma.customers.findUnique({
-            where: { id_customer: parseInt(id) }
-        });
+exports.update = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { name, first_surname, second_surname, dni } = req.body;
 
-        if (!customer) {
-            return res.status(404).json({ error: "Cliente no encontrado" });
-        }
+    const customer = await prisma.customers.findUnique({
+        where: { id_customer: parseInt(id) }
+    });
 
-        const updatedCustomer = await prisma.customers.update({
-            where: { id_customer: parseInt(id) },
-            data: { name, first_surname, second_surname, dni }
-        });
-
-        res.json(updatedCustomer);
-    } catch (error) {
-        console.error("Error en update:", error);
-        res.status(400).json({ error: "Error al actualizar cliente" });
+    if (!customer) {
+        return res.status(404).json({ error: "Cliente no encontrado" });
     }
-};
 
-// Función para consultar la API externa
+    const updatedCustomer = await prisma.customers.update({
+        where: { id_customer: parseInt(id) },
+        data: { name, first_surname, second_surname, dni }
+    });
+
+    res.json(updatedCustomer);
+});
+
 const fetchExternalCustomer = async (dni) => {
     try {
         const apiUrl = process.env.URL_API_PERU;
@@ -146,7 +102,7 @@ const fetchExternalCustomer = async (dni) => {
         });
 
         if (!response.ok) {
-            console.error("Error en API externa:", response.status, response.statusText);
+            logger.error("Error en API externa:", { status: response.status, statusText: response.statusText });
             return null;
         }
 
@@ -162,43 +118,29 @@ const fetchExternalCustomer = async (dni) => {
         }
         return null;
     } catch (error) {
-        console.error("Error al conectar con la API externa:", error);
+        logger.error("Error al conectar con la API externa:", error);
         return null;
     }
 };
 
-// Buscar un cliente por DNI
-exports.searchByDni = async (req, res) => {
-    try {
-        const { dni } = req.query;
-        if (!dni || !/^\d{8}$/.test(dni)) {
-            return res.status(400).json({ error: "El DNI debe tener exactamente 8 dígitos" });
-        }
+exports.searchByDni = asyncHandler(async (req, res) => {
+    const { dni } = req.query;
 
-        // 1. Buscar en la base de datos local
-        let customer = await prisma.customers.findUnique({ where: { dni } });
+    let customer = await prisma.customers.findUnique({ where: { dni } });
 
-        if (customer) {
-            return res.json({ found: true, source: "local", data: customer });
-        }
-
-        // 2. Consultar en la API externa
-        const externalCustomer = await fetchExternalCustomer(dni);
-
-        if (externalCustomer) {
-            // 3. Si se encuentra en la API externa, registrar en la base de datos local
-            customer = await prisma.customers.create({
-                data: externalCustomer
-            });
-
-            return res.json({ found: true, source: "external", data: customer });
-        }
-
-        // 4. Si no se encuentra en ninguna fuente, devolver mensaje
-        return res.json({ found: false, message: "Datos no encontrados, registrar manualmente" });
-
-    } catch (error) {
-        console.error("Error en searchByDni:", error);
-        return res.status(500).json({ error: "Error al buscar cliente por DNI" });
+    if (customer) {
+        return res.json({ found: true, source: "local", data: customer });
     }
-};
+
+    const externalCustomer = await fetchExternalCustomer(dni);
+
+    if (externalCustomer) {
+        customer = await prisma.customers.create({
+            data: externalCustomer
+        });
+
+        return res.json({ found: true, source: "external", data: customer });
+    }
+
+    return res.json({ found: false, message: "Datos no encontrados, registrar manualmente" });
+});
