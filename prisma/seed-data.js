@@ -1,28 +1,10 @@
 const { PrismaClient } = require("@prisma/client");
-const bcrypt = require("bcrypt");
 
 const prisma = new PrismaClient();
 
 async function main() {
-  // ─── USUARIOS ───────────────────────────────────────────────
-  const initialUsers = [
-    { name: "Root User", email: "root@example.com", password: "RootPass123!", role: "ROOT", status: true },
-    { name: "Admin User", email: "admin@example.com", password: "AdminPass123!", role: "ADMIN", status: true },
-    { name: "Employee User", email: "employee@example.com", password: "EmployeePass123!", role: "EMPLOYEE", status: true },
-  ];
-
-  const createdUsers = [];
-  for (const userData of initialUsers) {
-    let user = await prisma.users.findUnique({ where: { email: userData.email } });
-    if (!user) {
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
-      user = await prisma.users.create({ data: { ...userData, password: hashedPassword } });
-      console.log(`Usuario creado: ${userData.email} (${userData.role})`);
-    } else {
-      console.log(`Usuario existente ignorado: ${userData.email}`);
-    }
-    createdUsers.push(user);
-  }
+  const adminUser = await prisma.users.findUnique({ where: { email: "admin@example.com" } });
+  const employeeUser = await prisma.users.findUnique({ where: { email: "employee@example.com" } });
 
   // ─── CATEGORÍAS ─────────────────────────────────────────────
   const categoryData = [
@@ -113,17 +95,17 @@ async function main() {
   // ─── RECEPCIONES (INGRESO DE STOCK) ─────────────────────────
   const receptionDate = new Date("2026-06-15");
   const receptionData = [
-    { id_product: products[0].id_product, quantity: 50, purchase_price: 5.00, id_supplier: suppliers[0].id_supplier, id_user: createdUsers[1].id_user, date: receptionDate },
-    { id_product: products[1].id_product, quantity: 40, purchase_price: 4.50, id_supplier: suppliers[1].id_supplier, id_user: createdUsers[1].id_user, date: receptionDate },
-    { id_product: products[2].id_product, quantity: 80, purchase_price: 1.50, id_supplier: suppliers[0].id_supplier, id_user: createdUsers[2].id_user, date: receptionDate },
-    { id_product: products[3].id_product, quantity: 60, purchase_price: 3.20, id_supplier: suppliers[3].id_supplier, id_user: createdUsers[2].id_user, date: receptionDate },
-    { id_product: products[4].id_product, quantity: 30, purchase_price: 4.50, id_supplier: suppliers[3].id_supplier, id_user: createdUsers[1].id_user, date: new Date("2026-06-16") },
-    { id_product: products[5].id_product, quantity: 25, purchase_price: 8.00, id_supplier: suppliers[3].id_supplier, id_user: createdUsers[1].id_user, date: new Date("2026-06-16") },
-    { id_product: products[6].id_product, quantity: 30, purchase_price: 12.00, id_supplier: suppliers[2].id_supplier, id_user: createdUsers[1].id_user, date: new Date("2026-06-16") },
-    { id_product: products[7].id_product, quantity: 100, purchase_price: 2.00, id_supplier: suppliers[4].id_supplier, id_user: createdUsers[2].id_user, date: new Date("2026-06-17") },
-    { id_product: products[9].id_product, quantity: 40, purchase_price: 6.50, id_supplier: suppliers[2].id_supplier, id_user: createdUsers[1].id_user, date: new Date("2026-06-17") },
-    { id_product: products[11].id_product, quantity: 100, purchase_price: 2.80, id_supplier: suppliers[4].id_supplier, id_user: createdUsers[2].id_user, date: new Date("2026-06-18") },
-    { id_product: products[12].id_product, quantity: 80, purchase_price: 2.50, id_supplier: suppliers[4].id_supplier, id_user: createdUsers[2].id_user, date: new Date("2026-06-18") },
+    { id_product: products[0].id_product, quantity: 50, purchase_price: 5.00, id_supplier: suppliers[0].id_supplier, id_user: adminUser.id_user, date: receptionDate },
+    { id_product: products[1].id_product, quantity: 40, purchase_price: 4.50, id_supplier: suppliers[1].id_supplier, id_user: adminUser.id_user, date: receptionDate },
+    { id_product: products[2].id_product, quantity: 80, purchase_price: 1.50, id_supplier: suppliers[0].id_supplier, id_user: employeeUser.id_user, date: receptionDate },
+    { id_product: products[3].id_product, quantity: 60, purchase_price: 3.20, id_supplier: suppliers[3].id_supplier, id_user: employeeUser.id_user, date: receptionDate },
+    { id_product: products[4].id_product, quantity: 30, purchase_price: 4.50, id_supplier: suppliers[3].id_supplier, id_user: adminUser.id_user, date: new Date("2026-06-16") },
+    { id_product: products[5].id_product, quantity: 25, purchase_price: 8.00, id_supplier: suppliers[3].id_supplier, id_user: adminUser.id_user, date: new Date("2026-06-16") },
+    { id_product: products[6].id_product, quantity: 30, purchase_price: 12.00, id_supplier: suppliers[2].id_supplier, id_user: adminUser.id_user, date: new Date("2026-06-16") },
+    { id_product: products[7].id_product, quantity: 100, purchase_price: 2.00, id_supplier: suppliers[4].id_supplier, id_user: employeeUser.id_user, date: new Date("2026-06-17") },
+    { id_product: products[9].id_product, quantity: 40, purchase_price: 6.50, id_supplier: suppliers[2].id_supplier, id_user: adminUser.id_user, date: new Date("2026-06-17") },
+    { id_product: products[11].id_product, quantity: 100, purchase_price: 2.80, id_supplier: suppliers[4].id_supplier, id_user: employeeUser.id_user, date: new Date("2026-06-18") },
+    { id_product: products[12].id_product, quantity: 80, purchase_price: 2.50, id_supplier: suppliers[4].id_supplier, id_user: employeeUser.id_user, date: new Date("2026-06-18") },
   ];
 
   const receptions = [];
@@ -147,7 +129,7 @@ async function main() {
       payment_method: "EFECTIVO",
       operation_number: "OP-20260615-001",
       total: 32.30,
-      id_user: createdUsers[2].id_user,
+      id_user: employeeUser.id_user,
       id_customer: customers[0].id_customer,
       date: new Date("2026-06-16"),
       details: [
@@ -160,7 +142,7 @@ async function main() {
       payment_method: "TARJETA",
       operation_number: "OP-20260616-002",
       total: 24.50,
-      id_user: createdUsers[1].id_user,
+      id_user: adminUser.id_user,
       id_customer: customers[1].id_customer,
       date: new Date("2026-06-17"),
       details: [
@@ -172,7 +154,7 @@ async function main() {
       payment_method: "EFECTIVO",
       operation_number: "OP-20260617-003",
       total: 18.30,
-      id_user: createdUsers[2].id_user,
+      id_user: employeeUser.id_user,
       id_customer: customers[2].id_customer,
       date: new Date("2026-06-18"),
       details: [
@@ -182,11 +164,11 @@ async function main() {
     },
     {
       payment_method: "YAPE",
-      operation_number: "OP-20260618-004",
+      operation_number: `OP-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-004`,
       total: 55.50,
-      id_user: createdUsers[1].id_user,
+      id_user: adminUser.id_user,
       id_customer: customers[3].id_customer,
-      date: new Date("2026-06-19"),
+      date: new Date(),
       details: [
         { id_product: products[2].id_product, quantity: 5, unit_price: 2.50 },
         { id_product: products[5].id_product, quantity: 2, unit_price: 12.00 },
@@ -228,7 +210,6 @@ async function main() {
   console.log("╔═══════════════════════════════════╗");
   console.log("║       SEED COMPLETADO            ║");
   console.log("╚═══════════════════════════════════╝");
-  console.log(`Usuarios: ${initialUsers.length}`);
   console.log(`Categorías: ${categories.length}`);
   console.log(`Productos: ${products.length}`);
   console.log(`Proveedores: ${suppliers.length}`);

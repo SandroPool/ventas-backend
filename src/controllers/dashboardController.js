@@ -133,18 +133,23 @@ exports.getTopCustomers = asyncHandler(async (req, res) => {
 exports.getSalesTrend = asyncHandler(async (req, res) => {
     const thirtyDaysAgo = getThirtyDaysAgo();
 
-    const raw = await prisma.$queryRawUnsafe(`
-        SELECT DATE(s.date) AS day, COALESCE(SUM(s.total), 0) AS total
-        FROM "Sales" s
-        WHERE s.status != 'FULLY_RETURNED' AND s.date >= $1
-        GROUP BY DATE(s.date)
-        ORDER BY day ASC
-    `, thirtyDaysAgo);
+    const sales = await prisma.sales.findMany({
+        where: {
+            status: { not: "FULLY_RETURNED" },
+            date: { gte: thirtyDaysAgo }
+        },
+        select: { date: true, total: true }
+    });
 
-    const trend = (raw || []).map((r) => ({
-        day: r.day.toISOString().split('T')[0],
-        total: Number(r.total)
-    }));
+    const dailyMap = {};
+    for (const s of sales) {
+        const day = s.date.toISOString().split('T')[0];
+        dailyMap[day] = (dailyMap[day] || 0) + s.total;
+    }
+
+    const trend = Object.entries(dailyMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, total]) => ({ day, total }));
 
     res.json(trend);
 });
@@ -152,46 +157,69 @@ exports.getSalesTrend = asyncHandler(async (req, res) => {
 exports.getLowStock = asyncHandler(async (req, res) => {
     const threshold = parseInt(req.query.threshold) || 5;
 
-    const raw = await prisma.$queryRawUnsafe(`
-        SELECT p.id_product, p.name, p.sku, COALESCE(SUM(sm.quantity), 0) AS stock
-        FROM "Products" p
-        LEFT JOIN "StockMovements" sm ON sm.id_product = p.id_product
-        GROUP BY p.id_product, p.name, p.sku
-        HAVING COALESCE(SUM(sm.quantity), 0) <= $1
-        ORDER BY stock ASC
-    `, threshold);
+    const products = await prisma.products.findMany({
+        select: { id_product: true, name: true, sku: true }
+    });
 
-    const products = (raw || []).map((r) => ({
-        id_product: r.id_product,
-        name: r.name,
-        sku: r.sku || "N/A",
-        stock: Number(r.stock)
-    }));
+    const productIds = products.map(p => p.id_product);
+    const movements = await prisma.stockMovements.groupBy({
+        by: ["id_product"],
+        _sum: { quantity: true },
+        where: { id_product: { in: productIds } }
+    });
 
-    res.json(products);
+    const stockMap = {};
+    for (const m of movements) {
+        stockMap[m.id_product] = m._sum.quantity || 0;
+    }
+
+    const lowStock = products
+        .map(p => ({
+            id_product: p.id_product,
+            name: p.name,
+            sku: p.sku || "N/A",
+            stock: stockMap[p.id_product] || 0
+        }))
+        .filter(p => p.stock <= threshold)
+        .sort((a, b) => a.stock - b.stock);
+
+    res.json(lowStock);
 });
 
 exports.getSalesByCategory = asyncHandler(async (req, res) => {
-    const raw = await prisma.$queryRawUnsafe(`
-        SELECT c.name AS category,
-               COALESCE(SUM(sd.quantity * sd.unit_price), 0) AS total,
-               COUNT(DISTINCT s.id_sale) AS sales_count
-        FROM "Categories" c
-        LEFT JOIN "Products" p ON p.id_category = c.id_category
-        LEFT JOIN "SaleDetails" sd ON sd.id_product = p.id_product
-        LEFT JOIN "Sales" s ON s.id_sale = sd.id_sale AND s.status != 'FULLY_RETURNED'
-        GROUP BY c.id_category, c.name
-        HAVING COALESCE(SUM(sd.quantity * sd.unit_price), 0) > 0
-        ORDER BY total DESC
-    `);
+    const categories = await prisma.categories.findMany({
+        select: { id_category: true, name: true }
+    });
 
-    const categories = (raw || []).map((r) => ({
-        category: r.category,
-        total: Number(r.total),
-        sales_count: Number(r.sales_count)
-    }));
+    const saleDetails = await prisma.saleDetails.findMany({
+        select: {
+            quantity: true,
+            unit_price: true,
+            product: { select: { id_category: true } },
+            sale: { select: { id_sale: true, status: true } }
+        }
+    });
 
-    res.json(categories);
+    const categoryMap = {};
+    const saleIds = new Set();
+    for (const sd of saleDetails) {
+        if (sd.sale.status === "FULLY_RETURNED") continue;
+        const catId = sd.product.id_category;
+        if (!categoryMap[catId]) categoryMap[catId] = { total: 0, sales_count: new Set() };
+        categoryMap[catId].total += sd.quantity * sd.unit_price;
+        categoryMap[catId].sales_count.add(sd.sale.id_sale);
+    }
+
+    const result = categories
+        .map(c => ({
+            category: c.name,
+            total: categoryMap[c.id_category]?.total || 0,
+            sales_count: categoryMap[c.id_category]?.sales_count.size || 0
+        }))
+        .filter(c => c.total > 0)
+        .sort((a, b) => b.total - a.total);
+
+    res.json(result);
 });
 
 exports.getReturnsRate = asyncHandler(async (req, res) => {
