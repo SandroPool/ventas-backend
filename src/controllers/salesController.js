@@ -1,6 +1,10 @@
 const prisma = require("../configs/prisma");
 const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductStock, recordStockIn, recordStockOut } = require("../utils");
 
+const generateOperationNumber = () => {
+    return `OP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+};
+
 exports.getAll = asyncHandler(async (req, res) => {
     const { search, date } = req.query;
     const { page, limit, skip } = parsePagination(req.query);
@@ -82,31 +86,53 @@ exports.create = asyncHandler(async (req, res) => {
     }
     const total = details.reduce((sum, d) => sum + d.quantity * d.unit_price, 0);
 
-    const sale = await prisma.$transaction(async (prisma) => {
-        const newSale = await prisma.sales.create({
-            data: {
-                id_user,
-                id_customer,
-                payment_method,
-                operation_number,
-                total,
-                details: {
-                    create: details.map(d => ({
-                        id_product: d.id_product,
-                        quantity: d.quantity,
-                        unit_price: d.unit_price
-                    }))
+    const isCash = payment_method?.toLowerCase() === 'pagoefectivo';
+    const hasUserOpNumber = !!operation_number?.trim() && !isCash;
+    let opNumber = hasUserOpNumber ? operation_number.trim() : generateOperationNumber();
+    let attempt = 0;
+    const maxAttempts = 5;
+
+    while (attempt < maxAttempts) {
+        try {
+            const sale = await prisma.$transaction(async (prisma) => {
+                const newSale = await prisma.sales.create({
+                    data: {
+                        id_user,
+                        id_customer,
+                        payment_method,
+                        operation_number: opNumber,
+                        total,
+                        details: {
+                            create: details.map(d => ({
+                                id_product: d.id_product,
+                                quantity: d.quantity,
+                                unit_price: d.unit_price
+                            }))
+                        }
+                    },
+                    include: { details: true }
+                });
+
+                await recordStockOut(prisma, details, newSale.id_sale);
+
+                return newSale;
+            });
+
+            return res.status(201).json(sale);
+        } catch (error) {
+            if (error.code === 'P2002' && error.meta?.target?.includes('operation_number')) {
+                if (hasUserOpNumber) {
+                    return res.status(409).json({ error: `El número de operación "${opNumber}" ya existe. Verifica e intenta de nuevo.` });
                 }
-            },
-            include: { details: true }
-        });
+                opNumber = generateOperationNumber();
+                attempt++;
+            } else {
+                throw error;
+            }
+        }
+    }
 
-        await recordStockOut(prisma, details, newSale.id_sale);
-
-        return newSale;
-    });
-
-    res.status(201).json(sale);
+    res.status(500).json({ error: "No se pudo generar un número de operación único. Intente nuevamente." });
 });
 
 exports.update = asyncHandler(async (req, res) => {
