@@ -1,9 +1,12 @@
 const { body, query } = require("express-validator");
 
 exports.createCustomer = [
-    body("name").trim().notEmpty().withMessage("Nombre y apellido son obligatorios"),
-    body("first_surname").trim().notEmpty().withMessage("Nombre y apellido son obligatorios"),
-    body("second_surname").trim().notEmpty().withMessage("Nombre y apellido son obligatorios"),
+    body("name").trim().notEmpty().withMessage("Nombre y apellido son obligatorios")
+        .isLength({ max: 50 }).withMessage("El nombre no puede exceder 50 caracteres"),
+    body("first_surname").trim().notEmpty().withMessage("Nombre y apellido son obligatorios")
+        .isLength({ max: 50 }).withMessage("El apellido no puede exceder 50 caracteres"),
+    body("second_surname").trim().notEmpty().withMessage("Nombre y apellido son obligatorios")
+        .isLength({ max: 50 }).withMessage("El apellido no puede exceder 50 caracteres"),
     body("dni")
         .trim()
         .matches(/^\d{8}$/)
