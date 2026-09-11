@@ -1,5 +1,5 @@
 const prisma = require("../configs/prisma");
-const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductStock, recordStockIn, recordStockOut } = require("../utils");
+const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductStock, getProductsPurchasePrices, recordStockIn, recordStockOut } = require("../utils");
 
 const generateOperationNumber = () => {
     return `OP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -78,6 +78,14 @@ exports.create = asyncHandler(async (req, res) => {
         return res.status(400).json({ error: `Los siguientes productos no existen: ${missingProducts.join(", ")}` });
     }
 
+    const purchasePriceMap = await getProductsPurchasePrices(prisma, productIds);
+    for (const detail of details) {
+        const minimumPrice = purchasePriceMap.get(detail.id_product);
+        if (minimumPrice !== undefined && detail.unit_price < minimumPrice) {
+            return res.status(400).json({ error: `El precio de ${detail.id_product} no puede ser menor a S/ ${minimumPrice.toFixed(2)}` });
+        }
+    }
+
     for (const item of details) {
         const stockActual = await getProductStock(prisma, item.id_product);
         if (stockActual < item.quantity) {
@@ -154,6 +162,17 @@ exports.update = asyncHandler(async (req, res) => {
 
         if (!existingSale) {
             throw new Error("Venta no encontrada");
+        }
+
+        const productIds = details.map(d => d.id_product);
+        const purchasePriceMap = await getProductsPurchasePrices(prisma, productIds);
+        for (const detail of details) {
+            const minimumPrice = purchasePriceMap.get(detail.id_product);
+            if (minimumPrice !== undefined && detail.unit_price < minimumPrice) {
+                const error = new Error(`El precio de ${detail.id_product} no puede ser menor a S/ ${minimumPrice.toFixed(2)}`);
+                error.statusCode = 400;
+                throw error;
+            }
         }
 
         await recordStockIn(prisma, existingSale.details, saleId);

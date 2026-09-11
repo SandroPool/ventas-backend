@@ -23,16 +23,16 @@ El proyecto usa un `enum Role` en Prisma:
 - `ADMIN`
 - `EMPLOYEE`
 
-Se crea un seed en `prisma/seed.js` con 3 usuarios de prueba (ROOT, ADMIN, EMPLOYEE). Para ejecutarlo:
+Se crean 3 usuarios de prueba (ROOT, ADMIN, EMPLOYEE) y los datos iniciales. Para ejecutarlos:
 
 ```bash
 npm run seed
 ```
 
 Usuarios iniciales:
-- `root@example.com` / `RootPass123!` (ROLE=ROOT)
-- `admin@example.com` / `AdminPass123!` (ROLE=ADMIN)
-- `employee@example.com` / `EmployeePass123!` (ROLE=EMPLOYEE)
+- `root@ventas.com` / `RootPass123!` (ROLE=ROOT)
+- `admin@ventas.com` / `AdminPass123!` (ROLE=ADMIN)
+- `empleado@ventas.com` / `EmployeePass123!` (ROLE=EMPLOYEE)
 
 > Importante: cambiar estas credenciales en producción o antes de desplegar.
 

@@ -3,7 +3,7 @@ const { asyncHandler } = require("./asyncHandler");
 const { parsePagination } = require("./pagination");
 const { normalizeSearchTerm, getFullName, accentInsensitiveWhere } = require("./stringUtils");
 const { paginatedResponse } = require("./responseFormatter");
-const { getProductStock, getProductsStock, recordStockIn, recordStockOut } = require("./stockUtils");
+const { getProductStock, getProductsStock, getProductsPurchasePrices, recordStockIn, recordStockOut } = require("./stockUtils");
 const { validatePositiveNumber, assertExists } = require("./validationUtils");
 const { parseId } = require("./requestUtils");
 const { getDateRanges, getThirtyDaysAgo } = require("./dateUtils");
@@ -18,6 +18,7 @@ module.exports = {
     paginatedResponse,
     getProductStock,
     getProductsStock,
+    getProductsPurchasePrices,
     recordStockIn,
     recordStockOut,
     validatePositiveNumber,

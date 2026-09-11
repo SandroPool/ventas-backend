@@ -30,6 +30,25 @@ const getProductsStock = async (prisma, productIds) => {
     }));
 };
 
+const getProductsPurchasePrices = async (prisma, productIds) => {
+    if (!productIds || productIds.length === 0) return new Map();
+
+    const receptions = await prisma.productReceptions.findMany({
+        where: { id_product: { in: productIds } },
+        orderBy: [{ date: 'desc' }, { id_reception: 'desc' }],
+        select: { id_product: true, purchase_price: true },
+    });
+
+    const purchasePriceMap = new Map();
+    for (const reception of receptions) {
+        if (!purchasePriceMap.has(reception.id_product)) {
+            purchasePriceMap.set(reception.id_product, reception.purchase_price);
+        }
+    }
+
+    return purchasePriceMap;
+};
+
 const recordStockIn = async (prisma, details, referenceId) => {
     await prisma.stockMovements.createMany({
         data: details.map((d) => ({
@@ -52,4 +71,4 @@ const recordStockOut = async (prisma, details, referenceId) => {
     });
 };
 
-module.exports = { getProductStock, getProductsStock, recordStockIn, recordStockOut };
+module.exports = { getProductStock, getProductsStock, getProductsPurchasePrices, recordStockIn, recordStockOut };

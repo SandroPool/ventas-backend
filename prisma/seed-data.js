@@ -3,8 +3,12 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminUser = await prisma.users.findUnique({ where: { email: "admin@example.com" } });
-  const employeeUser = await prisma.users.findUnique({ where: { email: "employee@example.com" } });
+  const adminUser = await prisma.users.findUnique({ where: { email: "admin@ventas.com" } });
+  const employeeUser = await prisma.users.findUnique({ where: { email: "empleado@ventas.com" } });
+
+  if (!adminUser || !employeeUser) {
+    throw new Error("Faltan los usuarios iniciales. Ejecuta npm run seed:users antes de continuar.");
+  }
 
   // ─── CATEGORÍAS ─────────────────────────────────────────────
   const categoryData = [

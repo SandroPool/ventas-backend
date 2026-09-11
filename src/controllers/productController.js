@@ -1,5 +1,5 @@
 const prisma = require("../configs/prisma");
-const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductsStock } = require("../utils");
+const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductsStock, getProductsPurchasePrices } = require("../utils");
 
 exports.getAll = asyncHandler(async (req, res) => {
     const { searchTerm = "" } = req.query;
@@ -60,6 +60,7 @@ exports.getAll = asyncHandler(async (req, res) => {
 
     const productIds = products.map((p) => p.id_product);
     const stockData = await getProductsStock(prisma, productIds);
+    const purchasePriceMap = await getProductsPurchasePrices(prisma, productIds);
 
     products = products.map((product) => {
         const stockInfo = stockData.find(
@@ -68,6 +69,7 @@ exports.getAll = asyncHandler(async (req, res) => {
         return {
             ...product,
             stock: stockInfo?.stock || 0,
+            min_sale_price: purchasePriceMap.get(product.id_product) ?? 0,
         };
     });
 

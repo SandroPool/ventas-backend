@@ -8,7 +8,7 @@
     "start": "node src/",
     "build": "prisma generate",
     "prisma:deploy": "prisma migrate deploy",
-    "seed": "node prisma/seed-data.js",
+    "seed": "npm run seed:users && node prisma/seed-data.js",
     "seed:users": "node prisma/seed-users.js"
   },
   "keywords": [],
