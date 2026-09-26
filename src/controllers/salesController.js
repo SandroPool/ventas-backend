@@ -5,6 +5,20 @@ const generateOperationNumber = () => {
     return `OP-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 };
 
+const assertProductsActive = async (prisma, productIds) => {
+    const inactiveProducts = await prisma.products.findMany({
+        where: { id_product: { in: productIds }, status: false },
+        select: { id_product: true },
+    });
+
+    if (inactiveProducts.length > 0) {
+        const inactiveIds = inactiveProducts.map((product) => product.id_product);
+        const error = new Error(`No se pueden vender productos inactivos: ${inactiveIds.join(", ")}`);
+        error.statusCode = 400;
+        throw error;
+    }
+};
+
 exports.getAll = asyncHandler(async (req, res) => {
     const { search, date } = req.query;
     const { page, limit, skip } = parsePagination(req.query);
@@ -77,6 +91,8 @@ exports.create = asyncHandler(async (req, res) => {
     if (missingProducts.length > 0) {
         return res.status(400).json({ error: `Los siguientes productos no existen: ${missingProducts.join(", ")}` });
     }
+
+    await assertProductsActive(prisma, productIds);
 
     const purchasePriceMap = await getProductsPurchasePrices(prisma, productIds);
     for (const detail of details) {
@@ -165,6 +181,8 @@ exports.update = asyncHandler(async (req, res) => {
         }
 
         const productIds = details.map(d => d.id_product);
+        await assertProductsActive(prisma, productIds);
+
         const purchasePriceMap = await getProductsPurchasePrices(prisma, productIds);
         for (const detail of details) {
             const minimumPrice = purchasePriceMap.get(detail.id_product);

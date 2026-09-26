@@ -3,6 +3,7 @@ const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, v
 
 exports.getAll = asyncHandler(async (req, res) => {
     const { searchTerm = "" } = req.query;
+    const activeOnly = req.query.activeOnly === "true";
     const { page, limit, skip } = parsePagination(req.query);
 
     let products = [];
@@ -14,8 +15,9 @@ exports.getAll = asyncHandler(async (req, res) => {
         const query = `
             SELECT * FROM "Products"
             WHERE 
-              LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-              LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+                            (LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                            LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1))
+                            ${activeOnly ? "AND status = true" : ""}
             ORDER BY id_product
             LIMIT $2 OFFSET $3
         `;
@@ -30,8 +32,9 @@ exports.getAll = asyncHandler(async (req, res) => {
         const countQuery = `
             SELECT COUNT(*) as total FROM "Products"
             WHERE 
-              LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-              LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+                            (LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                            LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1))
+                            ${activeOnly ? "AND status = true" : ""}
         `;
         const totalResult = await prisma.$queryRawUnsafe(
             countQuery,
@@ -39,10 +42,13 @@ exports.getAll = asyncHandler(async (req, res) => {
         );
         totalProducts = parseInt(totalResult[0].total);
     } else {
-        totalProducts = await prisma.products.count();
+        totalProducts = await prisma.products.count({
+            where: activeOnly ? { status: true } : undefined,
+        });
         products = await prisma.products.findMany({
             skip,
             take: limit,
+            where: activeOnly ? { status: true } : undefined,
             select: {
                 id_product: true,
                 name: true,
