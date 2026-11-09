@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
 const morgan = require('morgan');
+const path = require("path");
 const { logger } = require("./utils");
 const errorHandler = require("./middlewares/errorHandler");
 
@@ -26,6 +27,7 @@ app.use(cors({
 
 app.use(morgan('dev', { stream }));
 app.use(express.json());
+app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 // Usar rutas
 const api = 'api';
 

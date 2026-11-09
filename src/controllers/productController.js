@@ -1,5 +1,6 @@
 const prisma = require("../configs/prisma");
-const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductsStock, getProductsPurchasePrices } = require("../utils");
+const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, validatePositiveNumber, assertExists, getProductsStock, getProductsPurchasePrices, logger } = require("../utils");
+const { saveProductImage, deleteProductImage } = require("../utils/productImage");
 
 exports.getAll = asyncHandler(async (req, res) => {
     const { searchTerm = "" } = req.query;
@@ -57,6 +58,7 @@ exports.getAll = asyncHandler(async (req, res) => {
                 price: true,
                 unit_type: true,
                 status: true,
+                image: true,
                 createdAt: true,
                 id_category: true,
                 fecha_vencimiento: true,
@@ -88,22 +90,35 @@ exports.create = asyncHandler(async (req, res) => {
     const parsedPrice = parseFloat(price);
     validatePositiveNumber(parsedPrice, "El precio");
 
-    const dataToCreate = {
-        name: name.trim(),
-        price: parsedPrice,
-        unit_type,
-        id_category: parseInt(id_category, 10),
-        description: description?.trim(),
-    };
+    const imagePath = req.file ? await saveProductImage(req.file.buffer) : null;
+    try {
+        const dataToCreate = {
+            name: name.trim(),
+            price: parsedPrice,
+            unit_type,
+            id_category: parseInt(id_category, 10),
+            description: description?.trim(),
+            image: imagePath,
+        };
 
-    if (fecha_vencimiento) {
-        dataToCreate.fecha_vencimiento = new Date(fecha_vencimiento);
+        if (fecha_vencimiento) {
+            dataToCreate.fecha_vencimiento = new Date(fecha_vencimiento);
+        }
+
+        const newProduct = await prisma.products.create({
+            data: dataToCreate,
+        });
+        res.status(201).json(newProduct);
+    } catch (error) {
+        if (imagePath) {
+            try {
+                await deleteProductImage(imagePath);
+            } catch (cleanupError) {
+                logger.error(`No se pudo limpiar la imagen del producto nuevo: ${cleanupError.message}`);
+            }
+        }
+        throw error;
     }
-
-    const newProduct = await prisma.products.create({
-        data: dataToCreate,
-    });
-    res.status(201).json(newProduct);
 });
 
 exports.update = asyncHandler(async (req, res) => {
@@ -115,12 +130,31 @@ exports.update = asyncHandler(async (req, res) => {
         return res.status(400).json({ error: "El ID del producto no es válido" });
     }
 
-    await assertExists(prisma, 'products', 'id_product', productId, "Producto no encontrado");
+    const existingProduct = await assertExists(
+        prisma,
+        "products",
+        "id_product",
+        productId,
+        "Producto no encontrado"
+    );
 
     let parsedPrice;
     if (price !== undefined) {
         parsedPrice = parseFloat(price);
         validatePositiveNumber(parsedPrice, "El precio");
+    }
+
+    let parsedStatus;
+    if (status !== undefined) {
+        if (status === true || status === "true") {
+            parsedStatus = true;
+        } else if (status === false || status === "false") {
+            parsedStatus = false;
+        } else {
+            const error = new Error("El estado del producto no es válido");
+            error.statusCode = 400;
+            throw error;
+        }
     }
 
     const dataToUpdate = {
@@ -129,7 +163,7 @@ exports.update = asyncHandler(async (req, res) => {
         price: price !== undefined ? parsedPrice : undefined,
         unit_type,
         id_category: id_category !== undefined ? parseInt(id_category, 10) : undefined,
-        status,
+        status: parsedStatus,
         sku: sku?.trim(),
     };
 
@@ -137,10 +171,33 @@ exports.update = asyncHandler(async (req, res) => {
         dataToUpdate.fecha_vencimiento = fecha_vencimiento ? new Date(fecha_vencimiento) : null;
     }
 
-    const updatedProduct = await prisma.products.update({
-        where: { id_product: productId },
-        data: dataToUpdate,
-    });
+    let newImagePath;
+    try {
+        if (req.file) {
+            newImagePath = await saveProductImage(req.file.buffer);
+            dataToUpdate.image = newImagePath;
+        }
 
-    res.json(updatedProduct);
+        const updatedProduct = await prisma.products.update({
+            where: { id_product: productId },
+            data: dataToUpdate,
+        });
+        if (newImagePath && existingProduct.image) {
+            try {
+                await deleteProductImage(existingProduct.image);
+            } catch (error) {
+                logger.error(`No se pudo eliminar la imagen anterior del producto ${productId}: ${error.message}`);
+            }
+        }
+        res.json(updatedProduct);
+    } catch (error) {
+        if (newImagePath) {
+            try {
+                await deleteProductImage(newImagePath);
+            } catch (cleanupError) {
+                logger.error(`No se pudo limpiar la imagen nueva del producto ${productId}: ${cleanupError.message}`);
+            }
+        }
+        throw error;
+    }
 });

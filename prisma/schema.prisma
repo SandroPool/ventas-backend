@@ -10,6 +10,7 @@ generator client {
 datasource db {
   provider      = "postgresql"
   url           = env("DATABASE_URL")
+  directUrl     = env("DIRECT_URL")
   relationMode  = "prisma"
 }
 
@@ -22,6 +23,7 @@ model Products {
   unit_type         String
   status            Boolean   @default(true)
   id_category       Int
+  image             String?
   fecha_vencimiento DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
