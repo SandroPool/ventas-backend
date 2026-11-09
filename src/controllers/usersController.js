@@ -104,7 +104,8 @@ exports.getAll = asyncHandler(async (req, res) => {
 
     const users = await prisma.users.findMany({
         where,
-        ...(searchTerm ? {} : { skip, take: limit }),
+        skip,
+        take: limit,
         select: {
             id_user: true,
             name: true,

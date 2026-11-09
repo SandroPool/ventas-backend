@@ -94,8 +94,9 @@ exports.update = asyncHandler(async (req, res) => {
         validatePositiveNumber(parsedQuantity, "La cantidad");
     }
 
+    let parsedPurchasePrice;
     if (purchase_price !== undefined) {
-        const parsedPurchasePrice = parseFloat(purchase_price);
+        parsedPurchasePrice = parseFloat(purchase_price);
         validatePositiveNumber(parsedPurchasePrice, "El precio de compra");
     }
 
@@ -106,7 +107,13 @@ exports.update = asyncHandler(async (req, res) => {
     const updatedReception = await prisma.$transaction(async (prisma) => {
         const updated = await prisma.productReceptions.update({
             where: { id_reception: receptionId },
-            data: { id_product, quantity, purchase_price, id_supplier, id_user }
+            data: {
+                ...(id_product !== undefined && { id_product }),
+                ...(quantity !== undefined && { quantity: parsedQuantity }),
+                ...(purchase_price !== undefined && { purchase_price: parsedPurchasePrice }),
+                ...(id_supplier !== undefined && { id_supplier }),
+                ...(id_user !== undefined && { id_user })
+            }
         });
 
         const newQty = parsedQuantity ?? reception.quantity;
