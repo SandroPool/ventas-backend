@@ -11,7 +11,14 @@
    DATABASE_URL="postgresql://user:password@host:port/dbname"
    JWT_SECRET="un-secreto-super-seguro"
    ```
-3. Ejecutar migraciones (en entorno de desarrollo):
+3. Configurar el almacenamiento de imágenes de productos en Supabase:
+   ```env
+   SUPABASE_URL="https://tu-proyecto.supabase.co"
+   SUPABASE_SERVICE_ROLE_KEY="tu-clave-de-servicio"
+   ```
+   Crea un bucket público llamado `productos` en Supabase Storage. La clave de servicio
+   solo debe existir en el `.env` del backend y nunca exponerse en el frontend.
+4. Ejecutar migraciones (en entorno de desarrollo):
    ```bash
    npm run prisma:deploy
    ```
