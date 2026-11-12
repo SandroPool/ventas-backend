@@ -12,7 +12,8 @@ exports.getAllStock = asyncHandler(async (req, res) => {
         const normalizedSearchTerm = normalizeSearchTerm(searchTerm);
 
         const query = `
-            SELECT p.id_product, p.name, p.sku, p.price, p.unit_type, 
+            SELECT p.id_product, p.name, p.description, p.image, p.fecha_vencimiento,
+                p.sku, p.price, p.unit_type,
                 COALESCE(c.name, 'Sin categoría') AS category,
                 COALESCE(SUM(sm.quantity), 0) AS stock
             FROM "Products" p
@@ -20,6 +21,7 @@ exports.getAllStock = asyncHandler(async (req, res) => {
             LEFT JOIN "StockMovements" sm ON sm.id_product = p.id_product
             WHERE 
                 LOWER(translate(p.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(p.description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
                 LOWER(translate(p.sku, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
             GROUP BY p.id_product, c.name
             ORDER BY p.id_product
@@ -42,6 +44,7 @@ exports.getAllStock = asyncHandler(async (req, res) => {
         const products = await prisma.products.findMany({
             skip,
             take: limit,
+            orderBy: { id_product: "asc" },
             include: {
                 category: {
                     select: { name: true }
@@ -58,6 +61,9 @@ exports.getAllStock = asyncHandler(async (req, res) => {
             return {
                 id_product: product.id_product,
                 name: product.name,
+                description: product.description,
+                image: product.image,
+                fecha_vencimiento: product.fecha_vencimiento,
                 sku: product.sku,
                 price: product.price,
                 unit_type: product.unit_type,
