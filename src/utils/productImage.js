@@ -5,7 +5,7 @@ const sharp = require("sharp");
 const { createClient } = require("@supabase/supabase-js");
 
 const productImagesDirectory = path.resolve(__dirname, "../../uploads/products");
-const productImagesBucket = "products";
+const productImagesBucket = "productos";
 const supportedFormats = new Set(["jpeg", "png", "webp", "gif", "avif", "tiff"]);
 let supabaseClient;
 
