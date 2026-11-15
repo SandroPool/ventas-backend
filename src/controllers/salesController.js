@@ -20,41 +20,63 @@ const assertProductsActive = async (prisma, productIds) => {
 };
 
 exports.getAll = asyncHandler(async (req, res) => {
-    const { search, date } = req.query;
+    const { search, dateFrom, dateTo } = req.query;
     const { page, limit, skip } = parsePagination(req.query);
+
+    let dateRange;
+    if (dateFrom !== undefined || dateTo !== undefined) {
+        if (typeof dateFrom !== "string" || typeof dateTo !== "string") {
+            return res.status(400).json({ error: "El rango de fechas no es válido" });
+        }
+
+        const from = new Date(dateFrom);
+        const to = new Date(dateTo);
+        if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+            return res.status(400).json({ error: "El rango de fechas no es válido" });
+        }
+        dateRange = { gte: from, lt: to };
+    }
 
     let sales = [];
     let total = 0;
 
     if (search?.trim()) {
         const normalizedSearch = normalizeSearchTerm(search);
+        const searchCondition = `(
+                LOWER(translate(c.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(s.payment_method, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+            )`;
+        const filterValues = [`%${normalizedSearch}%`];
+        let dateCondition = "";
+        if (dateRange) {
+            filterValues.push(dateRange.gte, dateRange.lt);
+            dateCondition = ` AND s.date >= $2::timestamptz AND s.date < $3::timestamptz`;
+        }
+        const whereClause = `${searchCondition}${dateCondition}`;
 
         const query = `
             SELECT s.*, c.name AS customer_name
             FROM "Sales" s
             LEFT JOIN "Customers" c ON s.id_customer = c.id_customer
-            WHERE 
-                LOWER(translate(c.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-                LOWER(translate(s.payment_method, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+            WHERE ${whereClause}
             ORDER BY s."createdAt" DESC
-            LIMIT $2 OFFSET $3
+            LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}
         `;
 
-        sales = await prisma.$queryRawUnsafe(query, `%${normalizedSearch}%`, limit, skip);
+        sales = await prisma.$queryRawUnsafe(query, ...filterValues, limit, skip);
 
         const countQuery = `
             SELECT COUNT(*) AS total
             FROM "Sales" s
             LEFT JOIN "Customers" c ON s.id_customer = c.id_customer
-            WHERE 
-                LOWER(translate(c.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-                LOWER(translate(s.payment_method, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+            WHERE ${whereClause}
         `;
-        const totalResult = await prisma.$queryRawUnsafe(countQuery, `%${normalizedSearch}%`);
+        const totalResult = await prisma.$queryRawUnsafe(countQuery, ...filterValues);
         total = totalResult.length > 0 ? parseInt(totalResult[0].total) : 0;
     } else {
-        total = await prisma.sales.count();
+        total = await prisma.sales.count({ where: dateRange ? { date: dateRange } : undefined });
         sales = await prisma.sales.findMany({
+            where: dateRange ? { date: dateRange } : undefined,
             skip,
             take: limit,
             orderBy: { createdAt: "desc" },
