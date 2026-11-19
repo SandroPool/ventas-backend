@@ -3,10 +3,34 @@ const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, v
 const { MOVEMENT_IN } = require("../configs/constants");
 
 exports.getAll = asyncHandler(async (req, res) => {
-    const { searchTerm = "" } = req.query;
+    const { searchTerm = "", dateFrom, dateTo } = req.query;
     const { page, limit, skip } = parsePagination(req.query);
 
     const normalizedSearchTerm = normalizeSearchTerm(searchTerm);
+    const filterValues = [`%${normalizedSearchTerm}%`];
+    const whereConditions = [`
+        (
+            LOWER(translate(p.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+            LOWER(translate(s.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+            LOWER(translate(u.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+        )
+    `];
+
+    if (dateFrom !== undefined || dateTo !== undefined) {
+        const isISODate = (value) => {
+            if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+            const date = new Date(`${value}T00:00:00.000Z`);
+            return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+        };
+        if (!isISODate(dateFrom) || !isISODate(dateTo) || dateFrom > dateTo) {
+            return res.status(400).json({ error: "El rango de fechas no es válido" });
+        }
+
+        filterValues.push(dateFrom, dateTo);
+        whereConditions.push(`pr.date::date >= $2::date AND pr.date::date <= $3::date`);
+    }
+
+    const whereClause = whereConditions.join(" AND ");
 
     const query = `
         SELECT pr.*, 
@@ -17,17 +41,14 @@ exports.getAll = asyncHandler(async (req, res) => {
         LEFT JOIN "Products" p ON pr.id_product = p.id_product
         LEFT JOIN "Suppliers" s ON pr.id_supplier = s.id_supplier
         LEFT JOIN "Users" u ON pr.id_user = u.id_user
-        WHERE 
-            LOWER(translate(p.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-            LOWER(translate(s.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-            LOWER(translate(u.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+        WHERE ${whereClause}
         ORDER BY pr."createdAt" DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}
     `;
 
     const receptions = await prisma.$queryRawUnsafe(
         query,
-        `%${normalizedSearchTerm}%`,
+        ...filterValues,
         limit,
         skip
     );
@@ -37,12 +58,9 @@ exports.getAll = asyncHandler(async (req, res) => {
         LEFT JOIN "Products" p ON pr.id_product = p.id_product
         LEFT JOIN "Suppliers" s ON pr.id_supplier = s.id_supplier
         LEFT JOIN "Users" u ON pr.id_user = u.id_user
-        WHERE 
-            LOWER(translate(p.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-            LOWER(translate(s.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-            LOWER(translate(u.name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+        WHERE ${whereClause}
     `;
-    const totalResult = await prisma.$queryRawUnsafe(countQuery, `%${normalizedSearchTerm}%`);
+    const totalResult = await prisma.$queryRawUnsafe(countQuery, ...filterValues);
     const total = parseInt(totalResult[0].total);
 
     res.json(paginatedResponse(receptions, total, page, limit));

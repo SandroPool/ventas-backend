@@ -1,6 +1,32 @@
 const prisma = require("../configs/prisma");
 const { asyncHandler, getDateRanges, getThirtyDaysAgo, getFullName } = require("../utils");
 
+const getRankingOptions = (req, res) => {
+    const period = req.query.period ?? "all";
+    const sortBy = req.query.sortBy ?? "amount";
+    if (!["all", "30d", "90d"].includes(period)) {
+        res.status(400).json({ error: "El periodo seleccionado no es válido" });
+        return null;
+    }
+    if (!["count", "amount"].includes(sortBy)) {
+        res.status(400).json({ error: "El criterio de orden no es válido" });
+        return null;
+    }
+
+    const where = { status: { not: "FULLY_RETURNED" } };
+    if (period !== "all") {
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - Number(period.slice(0, -1)));
+        where.date = { gte: startDate };
+    }
+
+    const orderBy = sortBy === "count"
+        ? [{ _count: { id_sale: "desc" } }, { _sum: { total: "desc" } }]
+        : [{ _sum: { total: "desc" } }, { _count: { id_sale: "desc" } }];
+
+    return { where, orderBy };
+};
+
 exports.getSalesSummary = asyncHandler(async (req, res) => {
     const { startOfDay, startOfWeek, startOfMonth, startOfYear } = getDateRanges();
 
@@ -9,6 +35,7 @@ exports.getSalesSummary = asyncHandler(async (req, res) => {
     const [salesToday, salesWeek, salesMonth, salesYear] = await Promise.all([
         prisma.sales.aggregate({
             _sum: { total: true },
+            _count: { _all: true },
             where: { date: { gte: startOfDay }, ...whereNotCancelled }
         }),
         prisma.sales.aggregate({
@@ -25,8 +52,13 @@ exports.getSalesSummary = asyncHandler(async (req, res) => {
         })
     ]);
 
+    const salesTodayTotal = salesToday._sum.total || 0;
+    const salesTodayCount = salesToday._count._all || 0;
+
     res.json({
-        salesToday: salesToday._sum.total || 0,
+        salesToday: salesTodayTotal,
+        salesTodayCount,
+        averageTicketToday: salesTodayCount > 0 ? salesTodayTotal / salesTodayCount : 0,
         salesWeek: salesWeek._sum.total || 0,
         salesMonth: salesMonth._sum.total || 0,
         salesYear: salesYear._sum.total || 0
@@ -74,12 +106,15 @@ exports.getTopProducts = asyncHandler(async (req, res) => {
 });
 
 exports.getTopUsers = asyncHandler(async (req, res) => {
+    const rankingOptions = getRankingOptions(req, res);
+    if (!rankingOptions) return;
+
     const topUsers = await prisma.sales.groupBy({
         by: ["id_user"],
         _count: { id_sale: true },
         _sum: { total: true },
-        where: { status: { not: "FULLY_RETURNED" } },
-        orderBy: { _sum: { total: "desc" } },
+        where: rankingOptions.where,
+        orderBy: rankingOptions.orderBy,
         take: 5
     });
 
@@ -103,12 +138,15 @@ exports.getTopUsers = asyncHandler(async (req, res) => {
 });
 
 exports.getTopCustomers = asyncHandler(async (req, res) => {
+    const rankingOptions = getRankingOptions(req, res);
+    if (!rankingOptions) return;
+
     const topCustomers = await prisma.sales.groupBy({
         by: ["id_customer"],
         _count: { id_sale: true },
         _sum: { total: true },
-        where: { status: { not: "FULLY_RETURNED" } },
-        orderBy: { _sum: { total: "desc" } },
+        where: rankingOptions.where,
+        orderBy: rankingOptions.orderBy,
         take: 5
     });
 

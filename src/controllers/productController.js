@@ -3,53 +3,73 @@ const { asyncHandler, parsePagination, normalizeSearchTerm, paginatedResponse, v
 const { saveProductImage, deleteProductImage } = require("../utils/productImage");
 
 exports.getAll = asyncHandler(async (req, res) => {
-    const { searchTerm = "" } = req.query;
+    const { searchTerm = "", dateFrom, dateTo } = req.query;
     const activeOnly = req.query.activeOnly === "true";
     const { page, limit, skip } = parsePagination(req.query);
+    let expirationRange;
+    if (dateFrom !== undefined || dateTo !== undefined) {
+        const isISODate = (value) => {
+            if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+            const date = new Date(`${value}T00:00:00.000Z`);
+            return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+        };
+        if (!isISODate(dateFrom) || !isISODate(dateTo) || dateFrom > dateTo) {
+            return res.status(400).json({ error: "El rango de fechas no es válido" });
+        }
+
+        const from = new Date(`${dateFrom}T00:00:00.000Z`);
+        const to = new Date(`${dateTo}T00:00:00.000Z`);
+        to.setUTCDate(to.getUTCDate() + 1);
+        expirationRange = { gte: from, lt: to, dateFrom, dateTo };
+    }
 
     let products = [];
     let totalProducts = 0;
 
     if (searchTerm.trim()) {
         const normalizedSearchTerm = normalizeSearchTerm(searchTerm);
+        const filterValues = [`%${normalizedSearchTerm}%`];
+        const whereConditions = [`
+            (
+                LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
+                LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1)
+            )
+        `];
+        if (activeOnly) whereConditions.push("status = true");
+        if (expirationRange) {
+            const fromParameter = filterValues.length + 1;
+            filterValues.push(expirationRange.dateFrom, expirationRange.dateTo);
+            whereConditions.push(`fecha_vencimiento::date >= $${fromParameter}::date AND fecha_vencimiento::date <= $${fromParameter + 1}::date`);
+        }
+        const whereClause = whereConditions.join(" AND ");
 
         const query = `
             SELECT * FROM "Products"
-            WHERE 
-                            (LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-                            LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1))
-                            ${activeOnly ? "AND status = true" : ""}
+            WHERE ${whereClause}
             ORDER BY id_product
-            LIMIT $2 OFFSET $3
+            LIMIT $${filterValues.length + 1} OFFSET $${filterValues.length + 2}
         `;
 
-        products = await prisma.$queryRawUnsafe(
-            query,
-            `%${normalizedSearchTerm}%`,
-            limit,
-            skip
-        );
+        products = await prisma.$queryRawUnsafe(query, ...filterValues, limit, skip);
 
         const countQuery = `
             SELECT COUNT(*) as total FROM "Products"
-            WHERE 
-                            (LOWER(translate(name, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1) OR
-                            LOWER(translate(description, 'áéíóúÁÉÍÓÚüÜñÑ', 'aeiouAEIOUuUnN')) ILIKE LOWER($1))
-                            ${activeOnly ? "AND status = true" : ""}
+            WHERE ${whereClause}
         `;
-        const totalResult = await prisma.$queryRawUnsafe(
-            countQuery,
-            `%${normalizedSearchTerm}%`
-        );
+        const totalResult = await prisma.$queryRawUnsafe(countQuery, ...filterValues);
         totalProducts = parseInt(totalResult[0].total);
     } else {
-        totalProducts = await prisma.products.count({
-            where: activeOnly ? { status: true } : undefined,
-        });
+        const where = {};
+        if (activeOnly) where.status = true;
+        if (expirationRange) {
+            where.fecha_vencimiento = { gte: expirationRange.gte, lt: expirationRange.lt };
+        }
+        const productFilter = Object.keys(where).length > 0 ? where : undefined;
+        totalProducts = await prisma.products.count({ where: productFilter });
         products = await prisma.products.findMany({
             skip,
             take: limit,
-            where: activeOnly ? { status: true } : undefined,
+            where: productFilter,
             select: {
                 id_product: true,
                 name: true,
