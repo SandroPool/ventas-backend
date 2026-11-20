@@ -97,6 +97,84 @@ exports.create = asyncHandler(async (req, res) => {
     res.status(201).json(newReception);
 });
 
+exports.createBatch = asyncHandler(async (req, res) => {
+    const { date, items } = req.body;
+    const id_user = req.user.id;
+    const receptionDate = new Date(date);
+
+    if (Number.isNaN(receptionDate.getTime())) {
+        return res.status(400).json({ error: "Fecha inválida" });
+    }
+
+    for (const item of items) {
+        validatePositiveNumber(Number(item.quantity), "La cantidad");
+        validatePositiveNumber(Number(item.purchase_price), "El precio de compra");
+    }
+
+    const productIds = [...new Set(items.map((item) => Number(item.id_product)))];
+    const supplierIds = [...new Set(items.map((item) => Number(item.id_supplier)))];
+
+    const receptions = await prisma.$transaction(async (transaction) => {
+        await assertExists(transaction, "users", "id_user", id_user, "El usuario no existe");
+
+        const existingProducts = await transaction.products.findMany({
+            where: { id_product: { in: productIds } },
+            select: { id_product: true },
+        });
+        if (existingProducts.length !== productIds.length) {
+            const existingIds = new Set(existingProducts.map((product) => product.id_product));
+            const missingIds = productIds.filter((productId) => !existingIds.has(productId));
+            const error = new Error(`Los siguientes productos no existen: ${missingIds.join(", ")}`);
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const existingSuppliers = await transaction.suppliers.findMany({
+            where: { id_supplier: { in: supplierIds } },
+            select: { id_supplier: true },
+        });
+        if (existingSuppliers.length !== supplierIds.length) {
+            const existingIds = new Set(existingSuppliers.map((supplier) => supplier.id_supplier));
+            const missingIds = supplierIds.filter((supplierId) => !existingIds.has(supplierId));
+            const error = new Error(`Los siguientes proveedores no existen: ${missingIds.join(", ")}`);
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const createdReceptions = [];
+        for (const item of items) {
+            const id_product = Number(item.id_product);
+            const id_supplier = Number(item.id_supplier);
+            const quantity = Number(item.quantity);
+            const purchase_price = Number(item.purchase_price);
+            const reception = await transaction.productReceptions.create({
+                data: {
+                    id_product,
+                    quantity,
+                    purchase_price,
+                    id_supplier,
+                    id_user,
+                    date: receptionDate,
+                },
+            });
+
+            await transaction.stockMovements.create({
+                data: {
+                    id_product,
+                    quantity,
+                    movement_type: MOVEMENT_IN,
+                    reference_id: reception.id_reception,
+                },
+            });
+            createdReceptions.push(reception);
+        }
+
+        return createdReceptions;
+    });
+
+    res.status(201).json({ receptions });
+});
+
 exports.update = asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { id_product, quantity, purchase_price, id_supplier, id_user } = req.body;

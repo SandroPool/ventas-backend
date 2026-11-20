@@ -55,6 +55,26 @@ npm run dev
 - Refresh: /users/refresh-token
 - Logout: /users/logout
 
+## 📥 Recepciones con varios productos
+
+El endpoint `POST /api/receptions/batch` registra una recepción con proveedor y fecha
+compartida y una lista de productos con su propio proveedor. La creación de cada recepción y su movimiento
+de stock se realiza en una sola transacción; si falla un producto, no se guarda
+ninguna parte del lote.
+
+```json
+{
+  "date": "2026-11-19",
+  "items": [
+    { "id_product": 10, "id_supplier": 2, "quantity": 20, "purchase_price": 2.5 },
+    { "id_product": 10, "id_supplier": 3, "quantity": 15, "purchase_price": 4.2 }
+  ]
+}
+```
+
+El usuario se toma del token de autenticación. Se permiten productos repetidos, incluso
+con distintos proveedores; cada línea conserva su proveedor y precio de compra.
+
 ## 📦 Notas
 
 - El seed impide duplicados revisando el email antes de crear.

@@ -3,7 +3,7 @@ const router = express.Router();
 const { receptionsController } = require("../controllers");
 const { authMiddleware, roleMiddleware } = require("../middlewares/auth");
 const { ROOT, ADMIN, EMPLOYEE } = require('../configs/constants');
-const { createReception, updateReception } = require("../validations/receptions");
+const { createReception, createReceptionBatch, updateReception } = require("../validations/receptions");
 const { validate } = require("../middlewares/validate");
 
 router.get("/",
@@ -14,6 +14,11 @@ router.post("/",
     roleMiddleware([ROOT, ADMIN]),
     createReception, validate,
     receptionsController.create);
+router.post("/batch",
+    authMiddleware,
+    roleMiddleware([ROOT, ADMIN]),
+    createReceptionBatch, validate,
+    receptionsController.createBatch);
 router.put("/:id",
     authMiddleware,
     roleMiddleware([ROOT, ADMIN]),
